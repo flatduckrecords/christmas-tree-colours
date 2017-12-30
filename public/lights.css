@@ -1,0 +1,36 @@
+div.blocks {
+    display: flex;
+    flex-wrap: wrap;
+}
+#textbox {
+    font-size: 4em;
+    margin-bottom: 0.25em;
+    width: 100%;
+    box-sizing: border-box;
+}
+div.blocks div {
+	width:100px;
+	height:100px;
+	background:#000;
+	margin: 0 10px 10px 0;
+	text-align:center;
+	line-height:100px;
+    color: #FFF;
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: 2rem;
+}
+button {
+    display: block;
+    font-size: 3rem;
+margin-bottom: 0.333em;
+}
+#lightmap, #message {
+    text-align: center;
+}
+#lightmap div {
+    width: 40px;
+    height: 40px;
+    background-color: #FFFFFF;
+    border:1px solid #333;
+    display: inline-block;
+}
