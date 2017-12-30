@@ -1,7 +1,27 @@
+#!/usr/bin/env nodejs
+
 express = require('express'); 
 app = express();
 server = require('http').createServer(app);
 io = require('socket.io').listen(server);
+var Pushover = require('node-pushover');
+
+// notifications
+var push = new Pushover({
+    token: "azgjga4yu79zyp5rmioc6qwvy2h5wc",
+    user: "utc624c65bvaz15fkessd12mm145hb"
+});
+
+push.send("Chromatographemic", "Server initialising! ["+ getReadableTimestamp(new Date()) +"]", function (err, res){
+    if(err){
+        console.log("We have an error:");
+        console.log(err);
+        console.log(err.stack);
+    }else{
+        //console.log("Message send successfully");
+        //console.log(res);
+    }
+});
 
 // get the port number from the arguments otherwise use default 80. 	
 var port = parseInt(process.argv[2], 10) || 80;
@@ -9,7 +29,7 @@ var port = parseInt(process.argv[2], 10) || 80;
 // you can pass through valid admins for the dodgy boot system - see 'bootcurrent' below
 var adminIPs = (process.argv[3] || '0').split(',').join();
 
-console.log('starting server on port', port); 
+console.log('starting server on port', port, "["+ getReadableTimestamp(new Date()) +"]"); 
 
 //start the webserver on specified port
 server.listen(port); 
@@ -34,223 +54,242 @@ var activeSender = null;
 var activeSenderStartTime = 0; 
 
 // queue of clients waiting to send messages
-var queue = []; 
+var queue = [];
 // time that the queue will update
-var queueShiftTime = 0; 
+var queueShiftTime = 0;
 // the time we last got a message (letter from the active sender)
-var lastMessageTime = 0; 
+var lastMessageTime = 0;
 
-// a flag that is set whenever something changes that we need to tell 
+// a flag that is set whenever something changes that we need to tell
 // all the clients about
 var statusHasChanged = true;
 
 // to save the letters for the log!
-var recordedMessage = ""; 
-// an array that stores which lights are on. This is for some of the 
-var lightsState = []; 
+var recordedMessage = "";
+var recordedMessageTime = ""; 
+// an array that stores which lights are on. This is for some of the
+var lightsState = [];
 
 // amount of time with no data sent before we tell the sender we're moving on
 var timeoutTime = 5000;
 // the length of time the client gets before we actually move on
-var kickOffWarningTime = 5000;  
+var kickOffWarningTime = 5000;
 
 // an object that gives us unique user names based on characters in the show
-var nameGenerator = new NameGenerator(); 
+var nameGenerator = new NameGenerator();
 
 setInterval(update, 1000);
 
-function update() { 
-	
-	var now = Date.now(); 
-	
-	// if no one currently in control and there's a queue, then give control 
+function update() {
+
+	var now = Date.now();
+
+	// if no one currently in control and there's a queue, then give control
 	// to first person in queue
 	if((activeSender==null) && (queue.length>0) ) {
-		setActiveSender(queue.shift()); 
-		statusHasChanged = true; 
-	}
-	
-	if(activeSender!=null) { 			
-		// if there have been no messages for 5 seconds (timeout)
-		if(now-lastMessageTime>timeoutTime){
-			
-			// and we haven't already moved the queueShiftTime forward
-			if(queueShiftTime > now+kickOffWarningTime) { 
-				// move the queueShiftTime forward!
-				queueShiftTime = now+kickOffWarningTime;
-				statusHasChanged = true; 
-			}
-		
-		// otherwise if we have had messages and the queueShiftTime has 
-		// been reduced because of inactivity, then reset it back where it
-		// should be	
-		} else if(queueShiftTime!= activeSenderStartTime+sendDuration) { 
-			queueShiftTime = activeSenderStartTime+sendDuration;
-			statusHasChanged = true; 
-		}
-	
+		setActiveSender(queue.shift());
+		statusHasChanged = true;
 	}
 
-	// if we're ready to move on then take 
+	if(activeSender!=null) {
+		// if there have been no messages for 5 seconds (timeout)
+		if(now-lastMessageTime>timeoutTime){
+
+			// and we haven't already moved the queueShiftTime forward
+			if(queueShiftTime > now+kickOffWarningTime) {
+				// move the queueShiftTime forward!
+				queueShiftTime = now+kickOffWarningTime;
+				statusHasChanged = true;
+			}
+
+		// otherwise if we have had messages and the queueShiftTime has
+		// been reduced because of inactivity, then reset it back where it
+		// should be
+		} else if(queueShiftTime!= activeSenderStartTime+sendDuration) {
+			queueShiftTime = activeSenderStartTime+sendDuration;
+			statusHasChanged = true;
+		}
+
+	}
+
+	// if we're ready to move on then take
 	// control away and give it to the next person in the queue.
-	if(now>queueShiftTime) { 
+	if(now>queueShiftTime) {
 		if(queue.length>0) {
-			setActiveSender(queue.shift()); 
-		} else { 
-			removeActiveSender(); 
+			setActiveSender(queue.shift());
+		} else {
+			removeActiveSender();
 		}
 	}
-	
+
 	// if anything has changed, best let everyone know!
 	if(statusHasChanged) {
 		sendStatus();
-		statusHasChanged  = false;  
+		statusHasChanged  = false;
 	}
 }
-function setActiveSender(socket) { 
-	
-	//console.log('setActiveSender ', socket); 
+function setActiveSender(socket) {
+
+	//console.log('setActiveSender ', socket);
 	if(activeSender == socket) return;
 
-	removeActiveSender(); 
-		
-	activeSender = socket; 
+	removeActiveSender();
+	activeSender = socket;
+	if(!activeSender) return;
 
-	if(!activeSender) return; 
-
-	//console.log('giving control to ', activeSender.name); 
+	//console.log('giving control to ', activeSender.name);
 	activeSender.emit('control', true);
-	
-	activeSenderStartTime = activeSender.startTime = Date.now(); 
+	activeSenderStartTime = activeSender.startTime = Date.now();
 	queueShiftTime = activeSenderStartTime+sendDuration;
-	lastMessageTime = activeSenderStartTime; 
-	
-	activeSender.messageCount  = 0 ; 
+	lastMessageTime = activeSenderStartTime;
+	activeSender.messageCount  = 0 ;
 
 	//console.log(activeSender, activeSender==null);
-	//console.log('giving control to ', activeSender.name); 
-	
-	
+	//console.log('giving control to ', activeSender.name);
+
 	for(var room in activeSender.rooms) { 
 		if(room!=activeSender.id) io.sockets.to(room).emit('resetletters'); 
 	}
 	lightsState = []; 
 	recordedMessage = ""; 
-	statusHasChanged = true; 
+	statusHasChanged = true;
 }
 
-function removeActiveSender() { 
-	
-	if(activeSender!=null) { 
-		activeSender.emit('control', false); 
-		//console.log('removing control from ', activeSender.name); 
-		activeSender = null; 
+function removeActiveSender() {
+
+	if(activeSender!=null) {
+		activeSender.emit('control', false);
+		//console.log('removing control from ', activeSender.name);
+		activeSender = null;
 		console.log("------ " + recordedMessage);
 		statusHasChanged=true;
 	}
 }
 
 
-function getStatusObject() { 
-	var status = {}; 
+function getStatusObject() {
+	var status = {};
 
-	// activeSenderName - 
-	// who is currently in control? 
-	status.activeSenderName = activeSender?activeSender.name:""; 
-	
-	// list of names in the queue (never longer than 20, even 
+	// activeSenderName -
+	// who is currently in control?
+	status.activeSenderName = activeSender?activeSender.name:"";
+
+	// list of names in the queue (never longer than 20, even
 	// if there are more in the queue)
-	var queueArray = []; 
-	for (var i = 0; i<queue.length && i<=20; i++) { 
-		queueArray.push(queue[i].name); 
-	} 
-	status.queue = queueArray; 
-	status.queueLength = queue.length; 
-	
-	// queueShiftTime - 
+	var queueArray = [];
+	for (var i = 0; i<queue.length && i<=20; i++) {
+		queueArray.push(queue[i].name);
+	}
+	status.queue = queueArray;
+	status.queueLength = queue.length;
+
+	// queueShiftTime -
 	// what time do we change senders
-	status.queueShiftTime = queueShiftTime; 
-	status.timeout = (Date.now()-lastMessageTime>timeoutTime); 
-	
+	status.queueShiftTime = queueShiftTime;
+	status.timeout = (Date.now()-lastMessageTime>timeoutTime);
+
 	// number of senders
-	status.senderCount = senders.length; 
-	// number of receivers 
-	status.receiverCount = receivers.length; 
-	
-	return status; 	
+	status.senderCount = senders.length;
+	// number of receivers
+	status.receiverCount = receivers.length;
+
+	return status;
 }
-function sendStatus() { 
-	//console.log("send status"); 
-	io.sockets.to("default").emit('status', getStatusObject()); 
+function sendStatus() {
+	//console.log("send status");
+	io.sockets.to("default").emit('status', getStatusObject());
 }
 
 io.sockets.on('connection', function (socket) { //gets called whenever a client connects
-	
-	var ip = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address.address;
-	console.log('connected ', ip);
-	
+
+	var ip = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
+	console.log('Client connected: ', ip);
+	//console.log(ip, socket);
+
+
 	socket.messageCount=0;
-	socket.startTime = 0;  
-		
-	// if we get a message of type 'register' then... 
-	socket.on('register', function (data) { 
+	socket.startTime = 0;
+
+	// if we get a message of type 'register' then...
+	socket.on('register', function (data) {
 		//console.log('register', data);
 		if(socket.registered) {
-			console.log('client already registered!'); 
-			return; 
+			console.log('client already registered!');
+			return;
 		}
 		socket.registered = true;
-		
-		// in future there will be separate rooms... 
+
+		// in future there will be separate rooms...
 		if((!checkRegisterData(data)) || (data.room!="default")) {
-			killClient(socket); 
+			killClient(socket);
 			return;
-		} 
-		
-		socket.room = data.room; 
-		socket.join(data.room); 
-		
-		socket.name = nameGenerator.getNewName(); 
-		
-		if(data.type=='sender') { 
-			
-			senders.push(socket); 
-			socket.type = 'sender'; 
+		}
+
+		socket.room = data.room;
+		socket.join(data.room);
+		socket.name = nameGenerator.getNewName();
+
+		if(data.type=='sender') {
+			senders.push(socket);
+			socket.type = 'sender';
 			console.log ("senders : "+senders.length, "receivers : "+receivers.length);
 			// send out confirmation that the socket has registered
-			socket.emit('registered', { name: socket.name, time:Date.now() });
+			socket.emit('registered', { name: socket.name, time:Date.now(), recordedMessage: recordedMessage, recordedMessageTime: recordedMessageTime });
 			
 			//setTimeout(function() {socket.emit('reload', 'http://seb.ly');}, 5000); 
-		} else if(data.type=='receiver') { 
-			receivers.push(socket); 
+		} else if(data.type=='receiver') {
+			receivers.push(socket);
 			socket.type = 'receiver';
-			
 			console.log ("new receiver : ", receivers.length);
-			
 			// send out confirmation that the socket has registered
 			socket.emit('registered', { name: socket.name });
-		} 
-		
-		statusHasChanged = true; 
-		
-		// to get all rooms : 
+		}
+
+		statusHasChanged = true;
+
+		// to get all rooms :
 		//console.log(io.rooms);
 
 	});
-	
-	socket.on('letter', function (data) { 
+
+	socket.on('resetpalette', function(data) {
+        if(typeof(data.palette) !== "undefined"){
+        	var message = "";
+        	for (var i = 0; i<data.palette.length;i++){
+        			message += data.palette[i].name;
+        	}
+        }
+        
+        recordedMessage = message;
+        recordedMessageTime = Date.now();
+                
+        io.sockets.to("default").emit('resetpalette', data);
+        message = '"'+message+'"' + " ["+ip+"] " + getReadableTimestamp(data.time);
+        console.log(message + "\r\n");
+        push.send("Palette Swap", message);
+	});
+
+	socket.on('lightmap', function(data) {
+    	    //console.log("Reciever reports lightmap:", data);
+            io.sockets.to("default").emit('lightmap', data);
+        });
+	socket.on('blink', function(data) {
+            //console.log("A light has blinked:", data);
+    	    io.sockets.to("default").emit('blink', data);
+        });
+	socket.on('letter', function (data) {
 		if(activeSender!=socket) {
-			//console.log('warning - control message from unauthorised sender'); 
+			//console.log('warning - control message from unauthorised sender');
 			return;
 		}
-		
-		// Validation! If the client is being naughty then boot them off! 
+
+		// Validation! If the client is being naughty then boot them off!
 		if((!checkValidLetterMessage(data)) || (!checkMessageRate(socket))) {
 			console.log('invalid', data);
-			killClient(socket); 
-			return; 
+			killClient(socket);
+			return;
 		}
-		
+
 		// send the  message out to all other clients in the same room
 		// I'm sure there's a better way to do this but it's for futureproofing
 		// when there is maybe the room system set up. 
@@ -425,6 +464,20 @@ function removeElementFromArray(element, array) {
 	}
 	
 }
+
+function receipt() {
+    
+}
+
+function leadingZeroes(figure) {
+    return ("0" + figure).slice(-2);
+}
+
+function getReadableTimestamp(timestamp) {
+    var date = new Date(timestamp);
+    return(leadingZeroes(date.getDate()) + "/" + leadingZeroes((date.getMonth()+1)) + "/" + date.getFullYear() + " " + leadingZeroes(date.getHours())  + "." + leadingZeroes(date.getMinutes())  + ":" + leadingZeroes(date.getSeconds()));
+}
+
 
 function NameGenerator() { 
 	var names = ["eleven", "lucas", "barb", "chiefhopper", "nancy", "billy", "karen", "dustin", "max", "joyce",  "jonathan", "will", "mike", "docbrenner" ]; 
