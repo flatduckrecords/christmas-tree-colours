@@ -8,8 +8,8 @@ var Pushover = require('node-pushover');
 
 // notifications
 var push = new Pushover({
-    token: "azgjga4yu79zyp5rmioc6qwvy2h5wc",
-    user: "utc624c65bvaz15fkessd12mm145hb"
+    token: "API--TOKEN",
+    user: "USER--KEY"
 });
 
 push.send("Chromatographemic", "Server initialising! ["+ getReadableTimestamp(new Date()) +"]", function (err, res){
