@@ -31,8 +31,7 @@ console.log('starting server on port', port, "["+ getReadableTimestamp(new Date(
 //start the webserver on specified port
 server.listen(port); 
 //tell the server that ./public/ contains the static webpages
-app.use(express.static(__dirname+'/public')); 
-
+app.use(express.static(__dirname+'/public'));
 
 // list of receivers (i.e. Raspberry Pi)
 const receivers = []; 
